@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Submission Reviewer</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: #f7f7f7;
+        }
+
+        /* HEADER */
+        .main-header {
+            background: #0b3d91;
+            color: white;
+            padding: 15px 30px;
+        }
+
+        .header-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            max-width: 1000px;
+            margin: auto;
+        }
+
+        .logo {
+            height: 50px;
+        }
+
+        .main-header h1 {
+            font-size: 22px;
+            margin: 0;
+        }
+
+        /* MAIN CONTENT */
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+
+        h1, h2, h3 {
+            margin-top: 0;
+        }
+
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .critical { color: #b00020; }
+        .warning { color: #d17b00; }
+        .info { color: #005bbb; }
+
+        button {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #0b3d91;
+            color: white;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #fafafa;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        ul {
+            margin-top: 8px;
+        }
+
+        /* FOOTER */
+        .main-footer {
+            background: #0b3d91;
+            color: white;
+            padding: 20px;
+            margin-top: 40px;
+            font-size: 14px;
+        }
+
+        .footer-container {
+            max-width: 1000px;
+            margin: auto;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .main-footer a {
+            color: #aad4ff;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header class="main-header">
+        <div class="header-container">
+            <img src="/static/logo.webp" alt="JNGR Logo" class="logo">
+            <h1>Journal of Next-Generation Research 5.0</h1>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <div class="card">
+            <h1>AI Submission Reviewer</h1>
+            <p>Upload a <strong>.docx</strong> or <strong>.pdf</strong> manuscript for compliance review.</p>
+
+            <input type="file" id="fileInput" accept=".docx,.pdf">
+            <button onclick="uploadFile()">Review Submission</button>
+
+            <p id="status"></p>
+        </div>
+
+        <div id="result"></div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="main-footer">
+        <div class="footer-container">
+            <div>
+                © 2024–2026 Journal of Next-Generation Research 5.0 — 
+                Content licensed under 
+                <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">
+                    CC BY-SA 4.0
+                </a>
+            </div>
+
+            <div>
+                Headquarters: Résidence Galis, Building 9, 4th Floor, Apartment 17, 
+                Rue El Araar, Boulevard Lalla Yacout, Casablanca, Morocco
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        async function uploadFile() {
+            const fileInput = document.getElementById("fileInput");
+            const status = document.getElementById("status");
+            const resultDiv = document.getElementById("result");
+
+            if (!fileInput.files.length) {
+                status.innerText = "Please choose a file first.";
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            status.innerText = "Review in progress...";
+            resultDiv.innerHTML = "";
+
+            try {
+                const res = await fetch("/review-file", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    status.innerText = "Server error.";
+                    resultDiv.innerHTML = `<div class="card"><pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                    return;
+                }
+
+                status.innerText = "Review completed.";
+
+                const issuesHtml = data.issues.map(issue => `
+                    <li class="${issue.severity}">
+                        <strong>[${issue.severity.toUpperCase()}]</strong>
+                        ${issue.category}: ${issue.message}
+                    </li>
+                `).join("");
+
+                const missingSections = data.section_check.missing.map(s => `<li>${s}</li>`).join("");
+                const presentSections = data.section_check.present.map(s => `<li>${s}</li>`).join("");
+                const suggestionsHtml = data.suggestions.map(s => `<li>${s}</li>`).join("");
+
+                resultDiv.innerHTML = `
+                    <div class="card">
+                        <h2>Review Report</h2>
+                        <p><strong>File:</strong> ${data.filename}</p>
+                        <p><strong>Template detected:</strong> ${data.template_type}</p>
+                        <p class="score"><strong>Score:</strong> ${data.score}/100</p>
+                    </div>
+
+                    <div class="card">
+                        <h3>Sections</h3>
+                        <p><strong>Present:</strong></p>
+                        <ul>${presentSections || "<li>None</li>"}</ul>
+                        <p><strong>Missing:</strong></p>
+                        <ul>${missingSections || "<li>None</li>"}</ul>
+                    </div>
+
+                    <div class="card">
+                        <h3>Issues</h3>
+                        <ul>${issuesHtml || "<li>No issues detected.</li>"}</ul>
+                    </div>
+
+                    <div class="card">
+                        <h3>Suggestions</h3>
+                        <ul>${suggestionsHtml || "<li>No suggestions.</li>"}</ul>
+                    </div>
+
+                    <div class="card">
+                        <h3>Editorial Feedback</h3>
+                        <pre>${data.editorial_feedback || "No editorial feedback generated."}</pre>
+                    </div>
+
+                    <div class="card">
+                        <h3>Preview</h3>
+                        <pre>${data.raw_text_preview}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                status.innerText = "Request failed.";
+                resultDiv.innerHTML = `<div class="card"><pre>${error.message}</pre></div>`;
+            }
+        }
+    </script>
+
+</body>
+</html>
