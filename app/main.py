@@ -93,7 +93,12 @@ async def review_file(file: UploadFile = File(...)):
             tmp.write(file_bytes)
             temp_path = tmp.name
 
-        text = extract_text_from_file(temp_path)
+        result = extract_text_from_file(temp_path)
+
+        if isinstance(result, dict):
+           text = result.get("text", "")
+        else:
+           text = result
         metadata = extract_basic_metadata(text)
 
         template_key = detect_template_type(text)
