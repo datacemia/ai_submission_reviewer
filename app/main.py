@@ -411,7 +411,7 @@ async def review_file(file: UploadFile = File(...)):
     temp_path = None
 
     try:
-        # 🔍 CHECK DUPLICATE (HASH)
+        # CHECK DUPLICATE (HASH)
         existing = (
             supabase.table("papers")
             .select("*")
@@ -423,7 +423,6 @@ async def review_file(file: UploadFile = File(...)):
             paper = existing.data[0]
             paper_id = paper["id"]
             file_url = paper.get("file_url")
-
         else:
             file_name = f"{uuid.uuid4()}{ext}"
 
@@ -433,12 +432,12 @@ async def review_file(file: UploadFile = File(...)):
             paper_insert = supabase.table("papers").insert({
                 "filename": file.filename,
                 "file_url": file_url,
-                "file_hash": file_hash,   # 🔥 IMPORTANT
+                "file_hash": file_hash,
             }).execute()
 
             paper_id = paper_insert.data[0]["id"]
 
-        # 📄 TEMP FILE
+        # TEMP FILE
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(file_bytes)
             temp_path = tmp.name
@@ -446,6 +445,9 @@ async def review_file(file: UploadFile = File(...)):
         result = extract_text_from_file(temp_path)
         text = result.get("text") if isinstance(result, dict) else result
         text = str(text)
+
+        if not text.strip():
+            raise ValueError("No text extracted from document")
 
         metadata = extract_basic_metadata(text)
 
@@ -460,45 +462,96 @@ async def review_file(file: UploadFile = File(...)):
 
         issues = []
 
-        for m in section_result["missing"]:
-            issues.append(ReviewIssue(
-                severity="critical",
-                category="structure",
-                message=f"Missing section: {m}"
-            ))
+        for m in section_result.get("missing", []):
+            issues.append(
+                ReviewIssue(
+                    severity="critical",
+                    category="structure",
+                    message=f"Missing section: {m}"
+                )
+            )
 
         for p in abstract_result.get("problems", []):
-            issues.append(ReviewIssue("warning", "abstract", p))
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="abstract",
+                    message=p
+                )
+            )
 
         keywords_present = "Keywords" in section_result.get("present", [])
 
         for p in keywords_result.get("problems", []):
             if keywords_present and p.lower().strip() == "keywords section is missing.":
                 continue
-            issues.append(ReviewIssue("warning", "keywords", p))
+
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="keywords",
+                    message=p
+                )
+            )
 
         for p in references_result.get("problems", []):
-            issues.append(ReviewIssue("critical", "references", p))
+            issues.append(
+                ReviewIssue(
+                    severity="critical",
+                    category="references",
+                    message=p
+                )
+            )
 
         if not citation_result["ok"]:
-            issues.append(ReviewIssue("warning", "citations", "No APA citations"))
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="citations",
+                    message="No APA citations"
+                )
+            )
 
         if not language_result["ok"]:
-            issues.append(ReviewIssue("warning", "language", language_result["message"]))
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="language",
+                    message=language_result["message"]
+                )
+            )
 
         if not ethics_result["ok"]:
-            issues.append(ReviewIssue("info", "ethics", "Check ethics manually"))
+            issues.append(
+                ReviewIssue(
+                    severity="info",
+                    category="ethics",
+                    message="Check ethics manually"
+                )
+            )
 
         score = compute_score(issues)
 
-        # 🔄 UPDATE PAPER (pas duplicata)
+        suggestions = []
+        if section_result.get("missing"):
+            suggestions.append("Fix missing sections")
+        if abstract_result.get("problems"):
+            suggestions.append("Improve abstract")
+        if references_result.get("problems"):
+            suggestions.append("Check references APA")
+        if not citation_result["ok"]:
+            suggestions.append("Check in-text citations consistency")
+        if not suggestions:
+            suggestions.append("Submission is structurally strong. Proceed with editorial review.")
+
+        # UPDATE PAPER (no duplicate)
         supabase.table("papers").update({
             "score": score,
             "template_type": template_key,
             "metadata": metadata,
         }).eq("id", paper_id).execute()
 
-        # 🤖 OpenAI
+        # OpenAI
         try:
             editorial_feedback = await generate_editorial_feedback(
                 text=text,
@@ -510,11 +563,11 @@ async def review_file(file: UploadFile = File(...)):
         except Exception:
             editorial_feedback = "Editorial feedback unavailable."
 
-        # 💾 INSERT REVIEW
+        # INSERT REVIEW
         supabase.table("reviews").insert({
             "paper_id": paper_id,
             "issues": [i.model_dump() for i in issues],
-            "suggestions": [],
+            "suggestions": suggestions,
             "editorial_feedback": editorial_feedback,
         }).execute()
 
@@ -525,9 +578,18 @@ async def review_file(file: UploadFile = File(...)):
             issues=issues,
             section_check=SectionCheck(**section_result),
             metadata=metadata,
-            suggestions=[],
+            suggestions=suggestions,
             raw_text_preview=text[:1500],
             editorial_feedback=editorial_feedback,
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e),
+                "trace": traceback.format_exc(),
+            }
         )
 
     finally:
