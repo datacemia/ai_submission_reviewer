@@ -22,18 +22,28 @@ from app.agent import generate_editorial_feedback
 
 load_dotenv()
 
+# 🔥 FIX Railway-safe paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
 app = FastAPI(title="AI Submission Reviewer", version="0.2.0")
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-templates = Jinja2Templates(directory="app/templates")
+app.mount(
+    "/static",
+    StaticFiles(directory=os.path.join(BASE_DIR, "static")),
+    name="static"
+)
 
-UPLOAD_DIR = "uploads"
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+UPLOAD_DIR = os.path.join(ROOT_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+# 🔥 FIX CRITIQUE ICI
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/health")
@@ -88,9 +98,6 @@ async def review_file(file: UploadFile = File(...)):
                 )
             )
 
-        # Safe keywords handling:
-        # if the section is already present, do not add the contradictory
-        # "Keywords section is missing." warning.
         keywords_present = "Keywords" in section_result.get("present", [])
 
         for problem in keywords_result.get("problems", []):
