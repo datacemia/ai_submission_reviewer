@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from collections import defaultdict
 
 from app.models import ReviewIssue, ReviewReport, SectionCheck
 from app.tools.extraction_tools import extract_text_from_file, extract_basic_metadata
@@ -265,3 +266,58 @@ async def test_openai():
         return {"response": response.choices[0].message.content}
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request, auth: bool = Depends(verify)):
+    try:
+        papers_response = (
+            supabase.table("papers")
+            .select("*")
+            .order("id", desc=True)
+            .execute()
+        )
+
+        reviews_response = (
+            supabase.table("reviews")
+            .select("*")
+            .order("id", desc=True)
+            .execute()
+        )
+
+        papers = papers_response.data or []
+        reviews = reviews_response.data or []
+
+        reviews_by_paper_id = defaultdict(list)
+        for review in reviews:
+            paper_id = review.get("paper_id")
+            if paper_id is not None:
+                reviews_by_paper_id[paper_id].append(review)
+
+        rows = []
+        for paper in papers:
+            paper_id = paper.get("id")
+            linked_reviews = reviews_by_paper_id.get(paper_id, [])
+            latest_review = linked_reviews[0] if linked_reviews else None
+
+            rows.append({
+                "paper": paper,
+                "latest_review": latest_review,
+                "reviews_count": len(linked_reviews),
+            })
+
+        return templates.TemplateResponse(
+            "dashboard.html",
+            {
+                "request": request,
+                "rows": rows,
+            },
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": f"Dashboard error: {str(e)}",
+                "trace": traceback.format_exc(),
+            },
+        )
