@@ -140,7 +140,14 @@ async def review_file(file: UploadFile = File(...)):
                 )
             )
 
+        keywords_present = "Keywords" in section_result.get("present", [])
+
         for p in keywords_result.get("problems", []):
+            normalized_problem = p.strip().lower()
+
+            if keywords_present and normalized_problem == "keywords section is missing.":
+                continue
+
             issues.append(
                 ReviewIssue(
                     severity="warning",
