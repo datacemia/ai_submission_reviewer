@@ -1,11 +1,13 @@
 import os
 import uuid
+import secrets
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, UploadFile, File, Request
+from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from app.models import ReviewIssue, ReviewReport, SectionCheck
 from app.tools.extraction_tools import extract_text_from_file, extract_basic_metadata
@@ -22,7 +24,7 @@ from app.agent import generate_editorial_feedback
 
 load_dotenv()
 
-# 🔥 FIX Railway-safe paths
+# Railway-safe paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
@@ -39,10 +41,29 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 UPLOAD_DIR = os.path.join(ROOT_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Basic auth protection for homepage
+security = HTTPBasic()
 
-# 🔥 FIX CRITIQUE ICI
+USERNAME = os.getenv("APP_USERNAME", "admin")
+PASSWORD = os.getenv("APP_PASSWORD", "1234")
+
+
+def verify(credentials: HTTPBasicCredentials = Depends(security)) -> bool:
+    correct_username = secrets.compare_digest(credentials.username, USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, PASSWORD)
+
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+    return True
+
+
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+async def home(request: Request, auth: bool = Depends(verify)):
     return templates.TemplateResponse(request, "index.html")
 
 
