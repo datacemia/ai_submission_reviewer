@@ -123,29 +123,67 @@ async def review_file(file: UploadFile = File(...)):
         issues = []
 
         for m in section_result["missing"]:
-            issues.append(ReviewIssue(
-                severity="critical",
-                category="structure",
-                message=f"Missing section: {m}"
-            ))
+            issues.append(
+                ReviewIssue(
+                    severity="critical",
+                    category="structure",
+                    message=f"Missing section: {m}"
+                )
+            )
 
         for p in abstract_result.get("problems", []):
-            issues.append(ReviewIssue("warning", "abstract", p))
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="abstract",
+                    message=p
+                )
+            )
 
         for p in keywords_result.get("problems", []):
-            issues.append(ReviewIssue("warning", "keywords", p))
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="keywords",
+                    message=p
+                )
+            )
 
         for p in references_result.get("problems", []):
-            issues.append(ReviewIssue("critical", "references", p))
+            issues.append(
+                ReviewIssue(
+                    severity="critical",
+                    category="references",
+                    message=p
+                )
+            )
 
         if not citation_result["ok"]:
-            issues.append(ReviewIssue("warning", "citations", "No APA citations"))
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="citations",
+                    message="No APA citations"
+                )
+            )
 
         if not language_result["ok"]:
-            issues.append(ReviewIssue("warning", "language", language_result["message"]))
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="language",
+                    message=language_result["message"]
+                )
+            )
 
         if not ethics_result["ok"]:
-            issues.append(ReviewIssue("info", "ethics", "Check ethics manually"))
+            issues.append(
+                ReviewIssue(
+                    severity="info",
+                    category="ethics",
+                    message="Check ethics manually"
+                )
+            )
 
         score = compute_score(issues)
 
@@ -165,7 +203,7 @@ async def review_file(file: UploadFile = File(...)):
             "Check references APA",
         ]
 
-        # 🔥 OpenAI (safe)
+        # OpenAI safe
         try:
             editorial_feedback = await generate_editorial_feedback(
                 text=text,
