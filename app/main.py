@@ -4,6 +4,7 @@ import secrets
 import tempfile
 import traceback
 from dotenv import load_dotenv
+import hashlib
 
 from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -405,36 +406,46 @@ async def review_file(file: UploadFile = File(...)):
         )
 
     file_bytes = await file.read()
-    file_name = f"{uuid.uuid4()}{ext}"
+    file_hash = hashlib.md5(file_bytes).hexdigest()
+
     temp_path = None
 
     try:
-        # Upload original file to Supabase Storage
-        try:
+        # 🔍 CHECK DUPLICATE (HASH)
+        existing = (
+            supabase.table("papers")
+            .select("*")
+            .eq("file_hash", file_hash)
+            .execute()
+        )
+
+        if existing.data:
+            paper = existing.data[0]
+            paper_id = paper["id"]
+            file_url = paper.get("file_url")
+
+        else:
+            file_name = f"{uuid.uuid4()}{ext}"
+
             supabase.storage.from_("papers").upload(file_name, file_bytes)
             file_url = supabase.storage.from_("papers").get_public_url(file_name)
-        except Exception as storage_error:
-            raise RuntimeError(
-                "Supabase Storage upload failed."
-            ) from storage_error
 
-        # Temporary local file for text extraction
+            paper_insert = supabase.table("papers").insert({
+                "filename": file.filename,
+                "file_url": file_url,
+                "file_hash": file_hash,   # 🔥 IMPORTANT
+            }).execute()
+
+            paper_id = paper_insert.data[0]["id"]
+
+        # 📄 TEMP FILE
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(file_bytes)
             temp_path = tmp.name
 
         result = extract_text_from_file(temp_path)
-
-        if isinstance(result, dict):
-            text = result.get("text") or result.get("content") or str(result)
-        else:
-            text = result
-
-        if not isinstance(text, str):
-            text = str(text)
-
-        if not text.strip():
-            raise ValueError("No text extracted from document")
+        text = result.get("text") if isinstance(result, dict) else result
+        text = str(text)
 
         metadata = extract_basic_metadata(text)
 
@@ -447,128 +458,47 @@ async def review_file(file: UploadFile = File(...)):
         language_result = check_language_requirements(text)
         ethics_result = check_ethics_requirements(text)
 
-        issues: list[ReviewIssue] = []
+        issues = []
 
-        for missing in section_result.get("missing", []):
-            issues.append(
-                ReviewIssue(
-                    severity="critical",
-                    category="structure",
-                    message=f"Missing section: {missing}",
-                )
-            )
+        for m in section_result["missing"]:
+            issues.append(ReviewIssue(
+                severity="critical",
+                category="structure",
+                message=f"Missing section: {m}"
+            ))
 
-        for problem in abstract_result.get("problems", []):
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="abstract",
-                    message=problem,
-                )
-            )
+        for p in abstract_result.get("problems", []):
+            issues.append(ReviewIssue("warning", "abstract", p))
 
         keywords_present = "Keywords" in section_result.get("present", [])
 
-        for problem in keywords_result.get("problems", []):
-            normalized_problem = problem.strip().lower()
-
-            if keywords_present and normalized_problem == "keywords section is missing.":
+        for p in keywords_result.get("problems", []):
+            if keywords_present and p.lower().strip() == "keywords section is missing.":
                 continue
+            issues.append(ReviewIssue("warning", "keywords", p))
 
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="keywords",
-                    message=problem,
-                )
-            )
+        for p in references_result.get("problems", []):
+            issues.append(ReviewIssue("critical", "references", p))
 
-        for problem in references_result.get("problems", []):
-            issues.append(
-                ReviewIssue(
-                    severity="critical",
-                    category="references",
-                    message=problem,
-                )
-            )
+        if not citation_result["ok"]:
+            issues.append(ReviewIssue("warning", "citations", "No APA citations"))
 
-        if not citation_result.get("ok", False):
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="citations",
-                    message="No APA-like in-text citations detected.",
-                )
-            )
+        if not language_result["ok"]:
+            issues.append(ReviewIssue("warning", "language", language_result["message"]))
 
-        if not language_result.get("ok", False):
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="language",
-                    message=language_result.get("message", "Language requirements not met."),
-                )
-            )
-
-        if not ethics_result.get("ok", False):
-            issues.append(
-                ReviewIssue(
-                    severity="info",
-                    category="ethics",
-                    message="Check ethics manually",
-                )
-            )
+        if not ethics_result["ok"]:
+            issues.append(ReviewIssue("info", "ethics", "Check ethics manually"))
 
         score = compute_score(issues)
 
-        # Dynamic suggestions
-        suggestions = []
+        # 🔄 UPDATE PAPER (pas duplicata)
+        supabase.table("papers").update({
+            "score": score,
+            "template_type": template_key,
+            "metadata": metadata,
+        }).eq("id", paper_id).execute()
 
-        if section_result.get("missing"):
-            suggestions.append("Fix missing sections.")
-
-        if abstract_result.get("problems"):
-            suggestions.append("Improve abstract length and structure.")
-
-        if references_result.get("problems"):
-            suggestions.append("Check references APA.")
-
-        if not citation_result.get("ok", False):
-            suggestions.append("Check in-text citations consistency.")
-
-        if not suggestions:
-            suggestions.append("Submission is structurally strong. Proceed with editorial review.")
-
-        # Avoid duplicate papers by filename
-        existing_paper = (
-            supabase.table("papers")
-            .select("*")
-            .eq("filename", file.filename)
-            .execute()
-        )
-
-        if existing_paper.data:
-            paper_id = existing_paper.data[0]["id"]
-
-            supabase.table("papers").update({
-                "file_url": file_url,
-                "score": score,
-                "template_type": template_key,
-                "metadata": metadata,
-            }).eq("id", paper_id).execute()
-        else:
-            paper_data = {
-                "filename": file.filename,
-                "file_url": file_url,
-                "score": score,
-                "template_type": template_key,
-                "metadata": metadata,
-            }
-
-            paper = supabase.table("papers").insert(paper_data).execute()
-            paper_id = paper.data[0]["id"]
-
-        # OpenAI feedback safe fallback
+        # 🤖 OpenAI
         try:
             editorial_feedback = await generate_editorial_feedback(
                 text=text,
@@ -580,36 +510,24 @@ async def review_file(file: UploadFile = File(...)):
         except Exception:
             editorial_feedback = "Editorial feedback unavailable."
 
-        review_data = {
+        # 💾 INSERT REVIEW
+        supabase.table("reviews").insert({
             "paper_id": paper_id,
-            "issues": [issue.model_dump() for issue in issues],
-            "suggestions": suggestions,
+            "issues": [i.model_dump() for i in issues],
+            "suggestions": [],
             "editorial_feedback": editorial_feedback,
-        }
+        }).execute()
 
-        supabase.table("reviews").insert(review_data).execute()
-
-        report = ReviewReport(
+        return ReviewReport(
             filename=file.filename,
             template_type=template_key,
             score=score,
             issues=issues,
             section_check=SectionCheck(**section_result),
             metadata=metadata,
-            suggestions=suggestions,
+            suggestions=[],
             raw_text_preview=text[:1500],
             editorial_feedback=editorial_feedback,
-        )
-
-        return report
-
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": str(e),
-                "trace": traceback.format_exc(),
-            }
         )
 
     finally:
