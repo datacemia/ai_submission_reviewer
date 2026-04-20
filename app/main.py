@@ -306,9 +306,9 @@ async def dashboard(request: Request, auth: bool = Depends(verify)):
             })
 
         return templates.TemplateResponse(
+            request,
             "dashboard.html",
             {
-                "request": request,
                 "rows": rows,
             },
         )
