@@ -2,12 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard - AI Submission Reviewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submission Dashboard - JNGR 5.0</title>
+
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            background: #f7f7f7;
+            background: #f4f7fb;
+            color: #1f2937;
         }
 
         .main-header {
@@ -20,12 +23,12 @@
             display: flex;
             align-items: center;
             gap: 15px;
-            max-width: 1100px;
+            max-width: 1200px;
             margin: auto;
         }
 
         .logo {
-            height: 50px;
+            height: 52px;
         }
 
         .main-header h1 {
@@ -34,74 +37,233 @@
         }
 
         .container {
-            max-width: 1100px;
-            margin: 40px auto;
+            max-width: 1200px;
+            margin: 32px auto;
             padding: 20px;
         }
 
-        .top-actions {
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
             margin-bottom: 20px;
         }
 
-        .top-actions a {
+        .back-link {
             color: #0b3d91;
             text-decoration: none;
             font-weight: bold;
         }
 
-        .card {
+        .page-title {
+            margin: 0;
+            font-size: 30px;
+            color: #0f172a;
+        }
+
+        .subtitle {
+            margin-top: 6px;
+            color: #475569;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
             background: white;
-            border-radius: 12px;
+            border-radius: 14px;
+            padding: 18px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border: 1px solid #e5e7eb;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #64748b;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #0f172a;
+        }
+
+        .filter-card,
+        .paper-card {
+            background: white;
+            border-radius: 14px;
             padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border: 1px solid #e5e7eb;
             margin-bottom: 20px;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin-top: 14px;
+        }
+
+        label {
+            font-size: 13px;
+            color: #475569;
+            display: block;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        input,
+        select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            font-size: 14px;
+        }
+
+        .actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 16px;
+            border-radius: 10px;
+            background: #0b3d91;
+            color: white;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-secondary {
+            background: #475569;
+        }
+
+        .paper-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .paper-title {
+            margin: 0;
+            font-size: 22px;
+            color: #0f172a;
+            word-break: break-word;
+        }
+
+        .badge-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge-template {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .badge-score-high {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-score-mid {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-score-low {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-neutral {
+            background: #e5e7eb;
+            color: #374151;
         }
 
         .meta-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
             gap: 12px;
-            margin-top: 15px;
-            margin-bottom: 15px;
+            margin: 16px 0;
         }
 
         .meta-box {
-            background: #fafafa;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
             padding: 12px;
         }
 
         .meta-label {
             font-size: 12px;
-            color: #666;
+            color: #64748b;
             text-transform: uppercase;
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
 
         .meta-value {
+            font-size: 14px;
             font-weight: bold;
             word-break: break-word;
+        }
+
+        .section-title {
+            margin-top: 18px;
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: #0f172a;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #f8fafc;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            line-height: 1.5;
+        }
+
+        ul {
+            margin-top: 8px;
+            padding-left: 20px;
         }
 
         .critical { color: #b00020; }
         .warning { color: #d17b00; }
         .info { color: #005bbb; }
 
-        pre {
-            white-space: pre-wrap;
-            background: #fafafa;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-        }
-
-        ul {
-            margin-top: 8px;
-        }
-
         .empty {
-            color: #777;
+            color: #64748b;
             font-style: italic;
         }
 
@@ -114,7 +276,7 @@
         }
 
         .footer-container {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: auto;
             display: flex;
             justify-content: space-between;
@@ -137,22 +299,121 @@
     </header>
 
     <div class="container">
-        <div class="top-actions">
-            <a href="/">← Back to Reviewer</a>
+        <div class="top-row">
+            <div>
+                <h2 class="page-title">Submission Dashboard</h2>
+                <div class="subtitle">Scientific editorial overview of papers and reviews</div>
+            </div>
+            <a href="/" class="back-link">← Back to Reviewer</a>
         </div>
 
-        <div class="card">
-            <h2>Submission Dashboard</h2>
-            <p>All papers and linked reviews from the dataset.</p>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Visible Papers</div>
+                <div class="stat-value">{{ stats.total_papers }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Visible Reviews</div>
+                <div class="stat-value">{{ stats.total_reviews }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Average Score</div>
+                <div class="stat-value">{{ stats.avg_score }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Papers ≥ 90</div>
+                <div class="stat-value">{{ stats.high_score_count }}</div>
+            </div>
+        </div>
+
+        <div class="filter-card">
+            <h3 style="margin-top: 0;">Filters</h3>
+
+            <form method="get" action="/dashboard">
+                <div class="filter-grid">
+                    <div>
+                        <label for="search">Search filename</label>
+                        <input
+                            type="text"
+                            id="search"
+                            name="search"
+                            placeholder="Type part of a filename"
+                            value="{{ filters.search }}"
+                        >
+                    </div>
+
+                    <div>
+                        <label for="template">Template</label>
+                        <select id="template" name="template">
+                            <option value="">All templates</option>
+                            {% for item in templates_available %}
+                                <option value="{{ item }}" {% if filters.template == item %}selected{% endif %}>
+                                    {{ item }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="min_score">Minimum score</label>
+                        <input
+                            type="number"
+                            id="min_score"
+                            name="min_score"
+                            min="0"
+                            max="100"
+                            placeholder="e.g. 90"
+                            value="{{ filters.min_score }}"
+                        >
+                    </div>
+
+                    <div>
+                        <label for="sort">Sort by</label>
+                        <select id="sort" name="sort">
+                            <option value="newest" {% if filters.sort == "newest" %}selected{% endif %}>Newest</option>
+                            <option value="score_desc" {% if filters.sort == "score_desc" %}selected{% endif %}>Score high to low</option>
+                            <option value="score_asc" {% if filters.sort == "score_asc" %}selected{% endif %}>Score low to high</option>
+                            <option value="filename_asc" {% if filters.sort == "filename_asc" %}selected{% endif %}>Filename A-Z</option>
+                            <option value="filename_desc" {% if filters.sort == "filename_desc" %}selected{% endif %}>Filename Z-A</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button type="submit" class="btn">Apply Filters</button>
+                    <a href="/dashboard" class="btn btn-secondary">Reset</a>
+                </div>
+            </form>
         </div>
 
         {% if rows %}
             {% for row in rows %}
                 {% set paper = row.paper %}
                 {% set review = row.latest_review %}
+                {% set score = paper.score if paper.score is not none else 0 %}
 
-                <div class="card">
-                    <h3>{{ paper.filename }}</h3>
+                <div class="paper-card">
+                    <div class="paper-header">
+                        <div>
+                            <h3 class="paper-title">{{ paper.filename }}</h3>
+                        </div>
+
+                        <div class="badge-row">
+                            <span class="badge badge-template">{{ paper.template_type or "N/A" }}</span>
+
+                            {% if paper.score is not none %}
+                                {% if score >= 90 %}
+                                    <span class="badge badge-score-high">Score {{ paper.score }}/100</span>
+                                {% elif score >= 75 %}
+                                    <span class="badge badge-score-mid">Score {{ paper.score }}/100</span>
+                                {% else %}
+                                    <span class="badge badge-score-low">Score {{ paper.score }}/100</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge badge-neutral">No score</span>
+                            {% endif %}
+                        </div>
+                    </div>
 
                     <div class="meta-grid">
                         <div class="meta-box">
@@ -161,35 +422,32 @@
                         </div>
 
                         <div class="meta-box">
-                            <div class="meta-label">Template</div>
-                            <div class="meta-value">{{ paper.template_type or "N/A" }}</div>
-                        </div>
-
-                        <div class="meta-box">
-                            <div class="meta-label">Score</div>
-                            <div class="meta-value">{{ paper.score if paper.score is not none else "N/A" }}/100</div>
-                        </div>
-
-                        <div class="meta-box">
                             <div class="meta-label">Reviews Count</div>
                             <div class="meta-value">{{ row.reviews_count }}</div>
                         </div>
+
+                        <div class="meta-box">
+                            <div class="meta-label">Issues Count</div>
+                            <div class="meta-value">{{ row.issue_count }}</div>
+                        </div>
+
+                        <div class="meta-box">
+                            <div class="meta-label">File</div>
+                            <div class="meta-value">
+                                {% if paper.file_url %}
+                                    <a href="{{ paper.file_url }}" target="_blank">Open file</a>
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
 
-                    <p>
-                        <strong>File URL:</strong>
-                        {% if paper.file_url %}
-                            <a href="{{ paper.file_url }}" target="_blank">Open file</a>
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </p>
-
-                    <h4>Metadata</h4>
+                    <div class="section-title">Metadata</div>
                     <pre>{{ paper.metadata or "No metadata available." }}</pre>
 
                     {% if review %}
-                        <h4>Issues</h4>
+                        <div class="section-title">Issues</div>
                         {% if review.issues %}
                             <ul>
                                 {% for issue in review.issues %}
@@ -200,10 +458,10 @@
                                 {% endfor %}
                             </ul>
                         {% else %}
-                            <p class="empty">No issues found.</p>
+                            <div class="empty">No issues found.</div>
                         {% endif %}
 
-                        <h4>Suggestions</h4>
+                        <div class="section-title">Suggestions</div>
                         {% if review.suggestions %}
                             <ul>
                                 {% for suggestion in review.suggestions %}
@@ -211,19 +469,19 @@
                                 {% endfor %}
                             </ul>
                         {% else %}
-                            <p class="empty">No suggestions available.</p>
+                            <div class="empty">No suggestions available.</div>
                         {% endif %}
 
-                        <h4>Editorial Feedback</h4>
+                        <div class="section-title">Editorial Feedback</div>
                         <pre>{{ review.editorial_feedback or "No editorial feedback available." }}</pre>
                     {% else %}
-                        <p class="empty">No review linked to this paper.</p>
+                        <div class="empty">No review linked to this paper.</div>
                     {% endif %}
                 </div>
             {% endfor %}
         {% else %}
-            <div class="card">
-                <p class="empty">No papers found in dataset.</p>
+            <div class="paper-card">
+                <div class="empty">No papers match the current filters.</div>
             </div>
         {% endif %}
     </div>

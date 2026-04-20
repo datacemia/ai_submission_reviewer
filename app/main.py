@@ -268,19 +268,30 @@ async def test_openai():
         return {"error": str(e)}
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, auth: bool = Depends(verify)):
+async def dashboard(
+    request: Request,
+    auth: bool = Depends(verify),
+):
     try:
+        search = (request.query_params.get("search") or "").strip()
+        template_filter = (request.query_params.get("template") or "").strip()
+        min_score_raw = (request.query_params.get("min_score") or "").strip()
+        sort_by = (request.query_params.get("sort") or "newest").strip()
+
+        try:
+            min_score = int(min_score_raw) if min_score_raw else None
+        except ValueError:
+            min_score = None
+
         papers_response = (
             supabase.table("papers")
             .select("*")
-            .order("id", desc=True)
             .execute()
         )
 
         reviews_response = (
             supabase.table("reviews")
             .select("*")
-            .order("id", desc=True)
             .execute()
         )
 
@@ -299,17 +310,80 @@ async def dashboard(request: Request, auth: bool = Depends(verify)):
             linked_reviews = reviews_by_paper_id.get(paper_id, [])
             latest_review = linked_reviews[0] if linked_reviews else None
 
+            filename = str(paper.get("filename") or "")
+            template_type = str(paper.get("template_type") or "")
+            score = paper.get("score")
+
+            if search and search.lower() not in filename.lower():
+                continue
+
+            if template_filter and template_type != template_filter:
+                continue
+
+            if min_score is not None:
+                try:
+                    if score is None or float(score) < min_score:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+
+            issue_count = len(latest_review.get("issues", [])) if latest_review else 0
+
             rows.append({
                 "paper": paper,
                 "latest_review": latest_review,
                 "reviews_count": len(linked_reviews),
+                "issue_count": issue_count,
             })
+
+        if sort_by == "score_desc":
+            rows.sort(key=lambda x: x["paper"].get("score") if x["paper"].get("score") is not None else -1, reverse=True)
+        elif sort_by == "score_asc":
+            rows.sort(key=lambda x: x["paper"].get("score") if x["paper"].get("score") is not None else 9999)
+        elif sort_by == "filename_asc":
+            rows.sort(key=lambda x: (x["paper"].get("filename") or "").lower())
+        elif sort_by == "filename_desc":
+            rows.sort(key=lambda x: (x["paper"].get("filename") or "").lower(), reverse=True)
+        else:
+            rows.sort(key=lambda x: str(x["paper"].get("id") or ""), reverse=True)
+
+        scores = []
+        for row in rows:
+            value = row["paper"].get("score")
+            try:
+                if value is not None:
+                    scores.append(float(value))
+            except (TypeError, ValueError):
+                pass
+
+        templates_available = sorted(
+            {
+                str(p.get("template_type"))
+                for p in papers
+                if p.get("template_type")
+            }
+        )
+
+        stats = {
+            "total_papers": len(rows),
+            "total_reviews": sum(row["reviews_count"] for row in rows),
+            "avg_score": round(sum(scores) / len(scores), 1) if scores else "N/A",
+            "high_score_count": sum(1 for s in scores if s >= 90),
+        }
 
         return templates.TemplateResponse(
             request,
             "dashboard.html",
             {
                 "rows": rows,
+                "stats": stats,
+                "filters": {
+                    "search": search,
+                    "template": template_filter,
+                    "min_score": min_score_raw,
+                    "sort": sort_by,
+                },
+                "templates_available": templates_available,
             },
         )
 
