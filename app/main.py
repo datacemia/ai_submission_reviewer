@@ -21,7 +21,7 @@ from app.tools.structure_tools import (
 from app.tools.citation_tools import check_reference_count, check_apa_intext_citations
 from app.tools.compliance_tools import check_language_requirements, check_ethics_requirements
 from app.tools.scoring_tools import compute_score
-from app.agent import generate_editorial_feedback
+# from app.agent import generate_editorial_feedback
 from app.db import supabase
 
 load_dotenv()
@@ -208,10 +208,7 @@ async def review_file(file: UploadFile = File(...)):
             "suggestions": suggestions,
         }
 
-        try:
-            editorial_feedback = await generate_editorial_feedback(report_payload)
-        except Exception as e:
-            editorial_feedback = f"Editorial feedback generation failed: {str(e)}"
+        editorial_feedback = "Editorial feedback temporarily disabled."
 
         # 4) Save review record in Supabase DB
         review_data = {
