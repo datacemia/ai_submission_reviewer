@@ -22,8 +22,10 @@ from app.tools.structure_tools import (
 from app.tools.citation_tools import check_reference_count, check_apa_intext_citations
 from app.tools.compliance_tools import check_language_requirements, check_ethics_requirements
 from app.tools.scoring_tools import compute_score
-# from app.agent import generate_editorial_feedback
+from app.agent import generate_editorial_feedback
 from app.db import supabase
+
+from openai import OpenAI
 
 load_dotenv()
 
@@ -43,6 +45,8 @@ security = HTTPBasic()
 
 USERNAME = os.getenv("APP_USERNAME", "admin")
 PASSWORD = os.getenv("APP_PASSWORD", "1234")
+
+client = OpenAI()
 
 
 def verify(credentials: HTTPBasicCredentials = Depends(security)) -> bool:
@@ -83,33 +87,27 @@ async def review_file(file: UploadFile = File(...)):
     temp_path = None
 
     try:
-        # 1) Upload original file to Supabase Storage
+        # Upload Supabase
         try:
             supabase.storage.from_("papers").upload(file_name, file_bytes)
             file_url = supabase.storage.from_("papers").get_public_url(file_name)
         except Exception as storage_error:
             raise RuntimeError(
-                "Supabase Storage upload failed. "
-                "Check that the bucket 'papers' exists and is accessible."
+                "Supabase Storage upload failed."
             ) from storage_error
 
-        # 2) Create a temporary local file only for text extraction
+        # Temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(file_bytes)
             temp_path = tmp.name
 
         result = extract_text_from_file(temp_path)
 
-        if isinstance(result, dict):
-            text = result.get("text") or result.get("content") or str(result)
-        else:
-            text = result
-
-        if not isinstance(text, str):
-            text = str(text)
+        text = result.get("text") if isinstance(result, dict) else result
+        text = str(text)
 
         if not text.strip():
-            raise ValueError("No text extracted from document")
+            raise ValueError("No text extracted")
 
         metadata = extract_basic_metadata(text)
 
@@ -122,110 +120,71 @@ async def review_file(file: UploadFile = File(...)):
         language_result = check_language_requirements(text)
         ethics_result = check_ethics_requirements(text)
 
-        issues: list[ReviewIssue] = []
+        issues = []
 
-        for missing in section_result["missing"]:
-            issues.append(
-                ReviewIssue(
-                    severity="critical",
-                    category="structure",
-                    message=f"Missing required section: {missing}",
-                )
-            )
+        for m in section_result["missing"]:
+            issues.append(ReviewIssue(
+                severity="critical",
+                category="structure",
+                message=f"Missing section: {m}"
+            ))
 
-        for problem in abstract_result.get("problems", []):
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="abstract",
-                    message=problem,
-                )
-            )
+        for p in abstract_result.get("problems", []):
+            issues.append(ReviewIssue("warning", "abstract", p))
 
-        keywords_present = "Keywords" in section_result.get("present", [])
+        for p in keywords_result.get("problems", []):
+            issues.append(ReviewIssue("warning", "keywords", p))
 
-        for problem in keywords_result.get("problems", []):
-            normalized_problem = problem.strip().lower()
-
-            if keywords_present and normalized_problem == "keywords section is missing.":
-                continue
-
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="keywords",
-                    message=problem,
-                )
-            )
-
-        for problem in references_result.get("problems", []):
-            issues.append(
-                ReviewIssue(
-                    severity="critical",
-                    category="references",
-                    message=problem,
-                )
-            )
+        for p in references_result.get("problems", []):
+            issues.append(ReviewIssue("critical", "references", p))
 
         if not citation_result["ok"]:
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="citations",
-                    message="No APA-like in-text citations detected.",
-                )
-            )
+            issues.append(ReviewIssue("warning", "citations", "No APA citations"))
 
         if not language_result["ok"]:
-            issues.append(
-                ReviewIssue(
-                    severity="warning",
-                    category="language",
-                    message=language_result["message"],
-                )
-            )
+            issues.append(ReviewIssue("warning", "language", language_result["message"]))
 
         if not ethics_result["ok"]:
-            issues.append(
-                ReviewIssue(
-                    severity="info",
-                    category="ethics",
-                    message="Ethics/originality statements may require manual verification.",
-                )
-            )
+            issues.append(ReviewIssue("info", "ethics", "Check ethics manually"))
 
         score = compute_score(issues)
 
-        paper_data = {
+        paper = supabase.table("papers").insert({
             "filename": file.filename,
             "file_url": file_url,
             "score": score,
             "template_type": template_key,
             "metadata": metadata,
-        }
+        }).execute()
 
-        paper = supabase.table("papers").insert(paper_data).execute()
         paper_id = paper.data[0]["id"]
 
         suggestions = [
-            "Add all missing required sections.",
-            "Ensure the abstract length and structure follow the selected template.",
-            "Verify that references follow APA 7th edition.",
-            "Check that in-text citations are consistent with the reference list.",
+            "Fix missing sections",
+            "Improve abstract",
+            "Check references APA",
         ]
 
-        editorial_feedback = "Editorial feedback temporarily disabled."
+        # 🔥 OpenAI (safe)
+        try:
+            editorial_feedback = await generate_editorial_feedback(
+                text=text,
+                template_type=template_key,
+                issues=issues,
+                metadata=metadata,
+                score=score,
+            )
+        except Exception:
+            editorial_feedback = "Editorial feedback unavailable."
 
-        review_data = {
+        supabase.table("reviews").insert({
             "paper_id": paper_id,
-            "issues": [issue.model_dump() for issue in issues],
+            "issues": [i.model_dump() for i in issues],
             "suggestions": suggestions,
             "editorial_feedback": editorial_feedback,
-        }
+        }).execute()
 
-        supabase.table("reviews").insert(review_data).execute()
-
-        report = ReviewReport(
+        return ReviewReport(
             filename=file.filename,
             template_type=template_key,
             score=score,
@@ -236,24 +195,17 @@ async def review_file(file: UploadFile = File(...)):
             raw_text_preview=text[:1500],
             editorial_feedback=editorial_feedback,
         )
-        return report
 
     except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={
-                "error": str(e),
-                "trace": traceback.format_exc()
-            }
+            content={"error": str(e), "trace": traceback.format_exc()}
         )
 
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
-from openai import OpenAI
-
-client = OpenAI()
 
 @app.get("/test-openai")
 async def test_openai():
