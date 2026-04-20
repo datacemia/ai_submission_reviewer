@@ -27,7 +27,6 @@ from app.db import supabase
 
 load_dotenv()
 
-# Railway-safe paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI(title="AI Submission Reviewer", version="0.2.0")
@@ -40,7 +39,6 @@ app.mount(
 
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# Basic auth protection for homepage
 security = HTTPBasic()
 
 USERNAME = os.getenv("APP_USERNAME", "admin")
@@ -86,8 +84,14 @@ async def review_file(file: UploadFile = File(...)):
 
     try:
         # 1) Upload original file to Supabase Storage
-        supabase.storage.from_("papers").upload(file_name, file_bytes)
-        file_url = supabase.storage.from_("papers").get_public_url(file_name)
+        try:
+            supabase.storage.from_("papers").upload(file_name, file_bytes)
+            file_url = supabase.storage.from_("papers").get_public_url(file_name)
+        except Exception as storage_error:
+            raise RuntimeError(
+                "Supabase Storage upload failed. "
+                "Check that the bucket 'papers' exists and is accessible."
+            ) from storage_error
 
         # 2) Create a temporary local file only for text extraction
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
@@ -97,9 +101,15 @@ async def review_file(file: UploadFile = File(...)):
         result = extract_text_from_file(temp_path)
 
         if isinstance(result, dict):
-            text = result.get("text", "")
+            text = result.get("text") or result.get("content") or str(result)
         else:
             text = result
+
+        if not isinstance(text, str):
+            text = str(text)
+
+        if not text.strip():
+            raise ValueError("No text extracted from document")
 
         metadata = extract_basic_metadata(text)
 
@@ -186,7 +196,6 @@ async def review_file(file: UploadFile = File(...)):
 
         score = compute_score(issues)
 
-        # 3) Save paper record in Supabase DB
         paper_data = {
             "filename": file.filename,
             "file_url": file_url,
@@ -205,19 +214,8 @@ async def review_file(file: UploadFile = File(...)):
             "Check that in-text citations are consistent with the reference list.",
         ]
 
-        report_payload = {
-            "filename": file.filename,
-            "template_type": template_key,
-            "score": score,
-            "issues": [issue.model_dump() for issue in issues],
-            "section_check": section_result,
-            "metadata": metadata,
-            "suggestions": suggestions,
-        }
-
         editorial_feedback = "Editorial feedback temporarily disabled."
 
-        # 4) Save review record in Supabase DB
         review_data = {
             "paper_id": paper_id,
             "issues": [issue.model_dump() for issue in issues],
