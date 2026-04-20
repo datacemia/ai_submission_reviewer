@@ -250,3 +250,22 @@ async def review_file(file: UploadFile = File(...)):
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+from openai import OpenAI
+
+client = OpenAI()
+
+@app.get("/test-openai")
+async def test_openai():
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Say OK if API works."}
+            ]
+        )
+        return {"response": response.choices[0].message.content}
+
+    except Exception as e:
+        return {"error": str(e)}
