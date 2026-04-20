@@ -395,3 +395,223 @@ async def dashboard(
                 "trace": traceback.format_exc(),
             },
         )
+@app.post("/review-file", response_model=ReviewReport)
+async def review_file(file: UploadFile = File(...)):
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".docx", ".pdf"]:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Only .docx and .pdf are supported."}
+        )
+
+    file_bytes = await file.read()
+    file_name = f"{uuid.uuid4()}{ext}"
+    temp_path = None
+
+    try:
+        # Upload original file to Supabase Storage
+        try:
+            supabase.storage.from_("papers").upload(file_name, file_bytes)
+            file_url = supabase.storage.from_("papers").get_public_url(file_name)
+        except Exception as storage_error:
+            raise RuntimeError(
+                "Supabase Storage upload failed."
+            ) from storage_error
+
+        # Temporary local file for text extraction
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(file_bytes)
+            temp_path = tmp.name
+
+        result = extract_text_from_file(temp_path)
+
+        if isinstance(result, dict):
+            text = result.get("text") or result.get("content") or str(result)
+        else:
+            text = result
+
+        if not isinstance(text, str):
+            text = str(text)
+
+        if not text.strip():
+            raise ValueError("No text extracted from document")
+
+        metadata = extract_basic_metadata(text)
+
+        template_key = detect_template_type(text)
+        section_result = check_required_sections(text, template_key)
+        abstract_result = check_abstract_rules(text, template_key)
+        keywords_result = check_keywords_rules(text, template_key)
+        references_result = check_reference_count(text, template_key)
+        citation_result = check_apa_intext_citations(text)
+        language_result = check_language_requirements(text)
+        ethics_result = check_ethics_requirements(text)
+
+        issues: list[ReviewIssue] = []
+
+        for missing in section_result.get("missing", []):
+            issues.append(
+                ReviewIssue(
+                    severity="critical",
+                    category="structure",
+                    message=f"Missing section: {missing}",
+                )
+            )
+
+        for problem in abstract_result.get("problems", []):
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="abstract",
+                    message=problem,
+                )
+            )
+
+        keywords_present = "Keywords" in section_result.get("present", [])
+
+        for problem in keywords_result.get("problems", []):
+            normalized_problem = problem.strip().lower()
+
+            if keywords_present and normalized_problem == "keywords section is missing.":
+                continue
+
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="keywords",
+                    message=problem,
+                )
+            )
+
+        for problem in references_result.get("problems", []):
+            issues.append(
+                ReviewIssue(
+                    severity="critical",
+                    category="references",
+                    message=problem,
+                )
+            )
+
+        if not citation_result.get("ok", False):
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="citations",
+                    message="No APA-like in-text citations detected.",
+                )
+            )
+
+        if not language_result.get("ok", False):
+            issues.append(
+                ReviewIssue(
+                    severity="warning",
+                    category="language",
+                    message=language_result.get("message", "Language requirements not met."),
+                )
+            )
+
+        if not ethics_result.get("ok", False):
+            issues.append(
+                ReviewIssue(
+                    severity="info",
+                    category="ethics",
+                    message="Check ethics manually",
+                )
+            )
+
+        score = compute_score(issues)
+
+        # Dynamic suggestions
+        suggestions = []
+
+        if section_result.get("missing"):
+            suggestions.append("Fix missing sections.")
+
+        if abstract_result.get("problems"):
+            suggestions.append("Improve abstract length and structure.")
+
+        if references_result.get("problems"):
+            suggestions.append("Check references APA.")
+
+        if not citation_result.get("ok", False):
+            suggestions.append("Check in-text citations consistency.")
+
+        if not suggestions:
+            suggestions.append("Submission is structurally strong. Proceed with editorial review.")
+
+        # Avoid duplicate papers by filename
+        existing_paper = (
+            supabase.table("papers")
+            .select("*")
+            .eq("filename", file.filename)
+            .execute()
+        )
+
+        if existing_paper.data:
+            paper_id = existing_paper.data[0]["id"]
+
+            supabase.table("papers").update({
+                "file_url": file_url,
+                "score": score,
+                "template_type": template_key,
+                "metadata": metadata,
+            }).eq("id", paper_id).execute()
+        else:
+            paper_data = {
+                "filename": file.filename,
+                "file_url": file_url,
+                "score": score,
+                "template_type": template_key,
+                "metadata": metadata,
+            }
+
+            paper = supabase.table("papers").insert(paper_data).execute()
+            paper_id = paper.data[0]["id"]
+
+        # OpenAI feedback safe fallback
+        try:
+            editorial_feedback = await generate_editorial_feedback(
+                text=text,
+                template_type=template_key,
+                issues=issues,
+                metadata=metadata,
+                score=score,
+            )
+        except Exception:
+            editorial_feedback = "Editorial feedback unavailable."
+
+        review_data = {
+            "paper_id": paper_id,
+            "issues": [issue.model_dump() for issue in issues],
+            "suggestions": suggestions,
+            "editorial_feedback": editorial_feedback,
+        }
+
+        supabase.table("reviews").insert(review_data).execute()
+
+        report = ReviewReport(
+            filename=file.filename,
+            template_type=template_key,
+            score=score,
+            issues=issues,
+            section_check=SectionCheck(**section_result),
+            metadata=metadata,
+            suggestions=suggestions,
+            raw_text_preview=text[:1500],
+            editorial_feedback=editorial_feedback,
+        )
+
+        return report
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e),
+                "trace": traceback.format_exc(),
+            }
+        )
+
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
