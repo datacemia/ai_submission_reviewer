@@ -1,6 +1,7 @@
 import os
 import uuid
 import secrets
+import tempfile
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
@@ -21,12 +22,12 @@ from app.tools.citation_tools import check_reference_count, check_apa_intext_cit
 from app.tools.compliance_tools import check_language_requirements, check_ethics_requirements
 from app.tools.scoring_tools import compute_score
 from app.agent import generate_editorial_feedback
+from app.db import supabase
 
 load_dotenv()
 
 # Railway-safe paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_DIR)
 
 app = FastAPI(title="AI Submission Reviewer", version="0.2.0")
 
@@ -37,9 +38,6 @@ app.mount(
 )
 
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-
-UPLOAD_DIR = os.path.join(ROOT_DIR, "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Basic auth protection for homepage
 security = HTTPBasic()
@@ -81,13 +79,21 @@ async def review_file(file: UploadFile = File(...)):
             content={"error": "Only .docx and .pdf are supported."}
         )
 
-    saved_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}{ext}")
-
-    with open(saved_path, "wb") as f:
-        f.write(await file.read())
+    file_bytes = await file.read()
+    file_name = f"{uuid.uuid4()}{ext}"
+    temp_path = None
 
     try:
-        text = extract_text_from_file(saved_path)
+        # 1) Upload original file to Supabase Storage
+        supabase.storage.from_("papers").upload(file_name, file_bytes)
+        file_url = supabase.storage.from_("papers").get_public_url(file_name)
+
+        # 2) Create a temporary local file only for text extraction
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(file_bytes)
+            temp_path = tmp.name
+
+        text = extract_text_from_file(temp_path)
         metadata = extract_basic_metadata(text)
 
         template_key = detect_template_type(text)
@@ -173,6 +179,18 @@ async def review_file(file: UploadFile = File(...)):
 
         score = compute_score(issues)
 
+        # 3) Save paper record in Supabase DB
+        paper_data = {
+            "filename": file.filename,
+            "file_url": file_url,
+            "score": score,
+            "template_type": template_key,
+            "metadata": metadata,
+        }
+
+        paper = supabase.table("papers").insert(paper_data).execute()
+        paper_id = paper.data[0]["id"]
+
         suggestions = [
             "Add all missing required sections.",
             "Ensure the abstract length and structure follow the selected template.",
@@ -195,6 +213,16 @@ async def review_file(file: UploadFile = File(...)):
         except Exception as e:
             editorial_feedback = f"Editorial feedback generation failed: {str(e)}"
 
+        # 4) Save review record in Supabase DB
+        review_data = {
+            "paper_id": paper_id,
+            "issues": [issue.model_dump() for issue in issues],
+            "suggestions": suggestions,
+            "editorial_feedback": editorial_feedback,
+        }
+
+        supabase.table("reviews").insert(review_data).execute()
+
         report = ReviewReport(
             filename=file.filename,
             template_type=template_key,
@@ -209,5 +237,5 @@ async def review_file(file: UploadFile = File(...)):
         return report
 
     finally:
-        if os.path.exists(saved_path):
-            os.remove(saved_path)
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
