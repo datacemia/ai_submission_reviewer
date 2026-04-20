@@ -6,3 +6,4 @@ python-docx
 pypdf
 openai
 supabase
+python-dotenv
