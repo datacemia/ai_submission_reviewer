@@ -233,6 +233,12 @@ async def review_file(file: UploadFile = File(...)):
         )
         return report
 
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
