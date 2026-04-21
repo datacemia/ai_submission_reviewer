@@ -595,3 +595,35 @@ async def review_file(file: UploadFile = File(...)):
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+@app.post("/papers/{paper_id}/status")
+async def update_paper_status(
+    paper_id: str,
+    request: Request,
+    auth: bool = Depends(verify),
+):
+    try:
+        form = await request.form()
+        new_status = str(form.get("editorial_status", "")).strip().lower()
+
+        allowed_statuses = {"submitted", "revise", "accepted", "rejected"}
+        if new_status not in allowed_statuses:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid editorial status."}
+            )
+
+        supabase.table("papers").update({
+            "editorial_status": new_status
+        }).eq("id", paper_id).execute()
+
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": f"Status update error: {str(e)}",
+                "trace": traceback.format_exc(),
+            },
+        )

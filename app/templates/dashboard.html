@@ -210,6 +210,26 @@
             color: #374151;
         }
 
+        .status-submitted {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .status-revise {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-accepted {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-rejected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
         .meta-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -242,6 +262,21 @@
             margin-bottom: 8px;
             font-size: 16px;
             color: #0f172a;
+        }
+
+        .status-form {
+            margin-bottom: 16px;
+        }
+
+        .status-form-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .status-form-row select {
+            max-width: 220px;
         }
 
         pre {
@@ -355,6 +390,17 @@
                     </div>
 
                     <div>
+                        <label for="status">Editorial status</label>
+                        <select id="status" name="status">
+                            <option value="">All statuses</option>
+                            <option value="submitted" {% if filters.status == "submitted" %}selected{% endif %}>Submitted</option>
+                            <option value="revise" {% if filters.status == "revise" %}selected{% endif %}>Revise</option>
+                            <option value="accepted" {% if filters.status == "accepted" %}selected{% endif %}>Accepted</option>
+                            <option value="rejected" {% if filters.status == "rejected" %}selected{% endif %}>Rejected</option>
+                        </select>
+                    </div>
+
+                    <div>
                         <label for="min_score">Minimum score</label>
                         <input
                             type="number"
@@ -391,6 +437,7 @@
                 {% set paper = row.paper %}
                 {% set review = row.latest_review %}
                 {% set score = paper.score if paper.score is not none else 0 %}
+                {% set status = paper.editorial_status or "submitted" %}
 
                 <div class="paper-card">
                     <div class="paper-header">
@@ -400,6 +447,10 @@
 
                         <div class="badge-row">
                             <span class="badge badge-template">{{ paper.template_type or "N/A" }}</span>
+
+                            <span class="badge status-{{ status }}">
+                                {{ status|upper }}
+                            </span>
 
                             {% if paper.score is not none %}
                                 {% if score >= 90 %}
@@ -442,6 +493,20 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="section-title">Editorial Decision</div>
+                    <form method="post" action="/papers/{{ paper.id }}/status" class="status-form">
+                        <div class="status-form-row">
+                            <select name="editorial_status">
+                                <option value="submitted" {% if status == "submitted" %}selected{% endif %}>Submitted</option>
+                                <option value="revise" {% if status == "revise" %}selected{% endif %}>Revise</option>
+                                <option value="accepted" {% if status == "accepted" %}selected{% endif %}>Accepted</option>
+                                <option value="rejected" {% if status == "rejected" %}selected{% endif %}>Rejected</option>
+                            </select>
+
+                            <button type="submit" class="btn">Update Status</button>
+                        </div>
+                    </form>
 
                     <div class="section-title">Metadata</div>
                     <pre>{{ paper.metadata or "No metadata available." }}</pre>
