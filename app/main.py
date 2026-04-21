@@ -8,7 +8,7 @@ import hashlib
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 
 from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
-from fastapi.responses import JSONResponse, HTMLResponse
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -277,13 +277,22 @@ async def dashboard(
     try:
         search = (request.query_params.get("search") or "").strip()
         template_filter = (request.query_params.get("template") or "").strip()
+        status_filter = (request.query_params.get("status") or "").strip().lower()
         min_score_raw = (request.query_params.get("min_score") or "").strip()
         sort_by = (request.query_params.get("sort") or "newest").strip()
+        page_raw = (request.query_params.get("page") or "1").strip()
+
+        page_size = 5
 
         try:
             min_score = int(min_score_raw) if min_score_raw else None
         except ValueError:
             min_score = None
+
+        try:
+            page = max(1, int(page_raw))
+        except ValueError:
+            page = 1
 
         papers_response = (
             supabase.table("papers")
@@ -314,12 +323,16 @@ async def dashboard(
 
             filename = str(paper.get("filename") or "")
             template_type = str(paper.get("template_type") or "")
+            paper_status = str(paper.get("editorial_status") or "submitted").lower()
             score = paper.get("score")
 
             if search and search.lower() not in filename.lower():
                 continue
 
             if template_filter and template_type != template_filter:
+                continue
+
+            if status_filter and paper_status != status_filter:
                 continue
 
             if min_score is not None:
@@ -339,9 +352,14 @@ async def dashboard(
             })
 
         if sort_by == "score_desc":
-            rows.sort(key=lambda x: x["paper"].get("score") if x["paper"].get("score") is not None else -1, reverse=True)
+            rows.sort(
+                key=lambda x: x["paper"].get("score") if x["paper"].get("score") is not None else -1,
+                reverse=True
+            )
         elif sort_by == "score_asc":
-            rows.sort(key=lambda x: x["paper"].get("score") if x["paper"].get("score") is not None else 9999)
+            rows.sort(
+                key=lambda x: x["paper"].get("score") if x["paper"].get("score") is not None else 9999
+            )
         elif sort_by == "filename_asc":
             rows.sort(key=lambda x: (x["paper"].get("filename") or "").lower())
         elif sort_by == "filename_desc":
@@ -373,19 +391,40 @@ async def dashboard(
             "high_score_count": sum(1 for s in scores if s >= 90),
         }
 
+        total_items = len(rows)
+        total_pages = max(1, (total_items + page_size - 1) // page_size)
+
+        if page > total_pages:
+            page = total_pages
+
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_rows = rows[start_idx:end_idx]
+
         return templates.TemplateResponse(
             request,
             "dashboard.html",
             {
-                "rows": rows,
+                "rows": paginated_rows,
                 "stats": stats,
                 "filters": {
                     "search": search,
                     "template": template_filter,
                     "min_score": min_score_raw,
                     "sort": sort_by,
+                    "status": status_filter,
                 },
                 "templates_available": templates_available,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total_items": total_items,
+                    "total_pages": total_pages,
+                    "has_prev": page > 1,
+                    "has_next": page < total_pages,
+                    "prev_page": page - 1,
+                    "next_page": page + 1,
+                },
             },
         )
 
