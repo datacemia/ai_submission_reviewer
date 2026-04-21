@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Detail - JNGR 5.0</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: #f4f7fb;
+            color: #1f2937;
+        }
+
+        .main-header {
+            background: #0b3d91;
+            color: white;
+            padding: 15px 30px;
+        }
+
+        .header-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        .logo {
+            height: 52px;
+        }
+
+        .main-header h1 {
+            font-size: 22px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 32px auto;
+            padding: 20px;
+        }
+
+        .back-link {
+            color: #0b3d91;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .card {
+            background: white;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border: 1px solid #e5e7eb;
+            margin-bottom: 20px;
+        }
+
+        .paper-title {
+            margin-top: 0;
+            font-size: 28px;
+            word-break: break-word;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .meta-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .meta-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .meta-value {
+            font-size: 14px;
+            font-weight: bold;
+            word-break: break-word;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .status-submitted {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .status-revise {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-accepted {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-rejected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .section-title {
+            margin-top: 18px;
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: #0f172a;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            box-sizing: border-box;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 16px;
+            border-radius: 10px;
+            background: #0b3d91;
+            color: white;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 12px;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #f8fafc;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            line-height: 1.5;
+        }
+
+        ul {
+            margin-top: 8px;
+            padding-left: 20px;
+        }
+
+        .critical { color: #b00020; }
+        .warning { color: #d17b00; }
+        .info { color: #005bbb; }
+
+        .empty {
+            color: #64748b;
+            font-style: italic;
+        }
+
+        .main-footer {
+            background: #0b3d91;
+            color: white;
+            padding: 20px;
+            margin-top: 40px;
+            font-size: 14px;
+        }
+
+        .footer-container {
+            max-width: 1100px;
+            margin: auto;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .main-footer a {
+            color: #aad4ff;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="header-container">
+            <img src="/static/logo.webp" alt="JNGR Logo" class="logo">
+            <h1>Journal of Next-Generation Research 5.0</h1>
+        </div>
+    </header>
+
+    <div class="container">
+        <p>
+            <a href="/dashboard" class="back-link">← Back to Dashboard</a>
+        </p>
+
+        <div class="card">
+            <h2 class="paper-title">{{ paper.filename }}</h2>
+
+            <p>
+                <span class="badge status-{{ paper.editorial_status or 'submitted' }}">
+                    {{ (paper.editorial_status or "submitted")|upper }}
+                </span>
+            </p>
+
+            <div class="meta-grid">
+                <div class="meta-box">
+                    <div class="meta-label">Paper ID</div>
+                    <div class="meta-value">{{ paper.id }}</div>
+                </div>
+
+                <div class="meta-box">
+                    <div class="meta-label">Template</div>
+                    <div class="meta-value">{{ paper.template_type or "N/A" }}</div>
+                </div>
+
+                <div class="meta-box">
+                    <div class="meta-label">Score</div>
+                    <div class="meta-value">{{ paper.score if paper.score is not none else "N/A" }}/100</div>
+                </div>
+
+                <div class="meta-box">
+                    <div class="meta-label">File</div>
+                    <div class="meta-value">
+                        {% if paper.file_url %}
+                            <a href="{{ paper.file_url }}" target="_blank">Open file</a>
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-title">Metadata</div>
+            <pre>{{ paper.metadata or "No metadata available." }}</pre>
+        </div>
+
+        <div class="card">
+            <h3>Editorial Decision Note</h3>
+
+            <form method="post" action="/papers/{{ paper.id }}/note">
+                <textarea name="decision_note" placeholder="Write an editorial note...">{{ paper.decision_note or "" }}</textarea>
+                <button type="submit" class="btn">Save Note</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3>Review History</h3>
+
+            {% if reviews %}
+                {% for review in reviews %}
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 16px;">
+                        <div class="section-title">Issues</div>
+                        {% if review.issues %}
+                            <ul>
+                                {% for issue in review.issues %}
+                                    <li class="{{ issue.severity }}">
+                                        <strong>[{{ issue.severity|upper }}]</strong>
+                                        {{ issue.category }}: {{ issue.message }}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="empty">No issues found.</p>
+                        {% endif %}
+
+                        <div class="section-title">Suggestions</div>
+                        {% if review.suggestions %}
+                            <ul>
+                                {% for suggestion in review.suggestions %}
+                                    <li>{{ suggestion }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="empty">No suggestions available.</p>
+                        {% endif %}
+
+                        <div class="section-title">Editorial Feedback</div>
+                        <pre>{{ review.editorial_feedback or "No editorial feedback available." }}</pre>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="empty">No reviews found for this paper.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <footer class="main-footer">
+        <div class="footer-container">
+            <div>
+                © 2024–2026 Journal of Next-Generation Research 5.0 —
+                Content licensed under
+                <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">
+                    CC BY-SA 4.0
+                </a>
+            </div>
+
+            <div>
+                Headquarters: Résidence Galis, Building 9, 4th Floor, Apartment 17,
+                Rue El Araar, Boulevard Lalla Yacout, Casablanca, Morocco
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

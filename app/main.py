@@ -628,3 +628,78 @@ async def update_paper_status(
                 "trace": traceback.format_exc(),
             },
         )
+
+@app.get("/papers/{paper_id}", response_class=HTMLResponse)
+async def paper_detail(
+    paper_id: str,
+    request: Request,
+    auth: bool = Depends(verify),
+):
+    try:
+        paper_response = (
+            supabase.table("papers")
+            .select("*")
+            .eq("id", paper_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not paper_response.data:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Paper not found."}
+            )
+
+        paper = paper_response.data[0]
+
+        reviews_response = (
+            supabase.table("reviews")
+            .select("*")
+            .eq("paper_id", paper_id)
+            .execute()
+        )
+
+        reviews = reviews_response.data or []
+
+        return templates.TemplateResponse(
+            request,
+            "paper_detail.html",
+            {
+                "paper": paper,
+                "reviews": reviews,
+            },
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": f"Paper detail error: {str(e)}",
+                "trace": traceback.format_exc(),
+            },
+        )
+
+@app.post("/papers/{paper_id}/note")
+async def update_paper_note(
+    paper_id: str,
+    request: Request,
+    auth: bool = Depends(verify),
+):
+    try:
+        form = await request.form()
+        decision_note = str(form.get("decision_note", "")).strip()
+
+        supabase.table("papers").update({
+            "decision_note": decision_note
+        }).eq("id", paper_id).execute()
+
+        return RedirectResponse(url=f"/papers/{paper_id}", status_code=303)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": f"Decision note update error: {str(e)}",
+                "trace": traceback.format_exc(),
+            },
+        )
